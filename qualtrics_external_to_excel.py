@@ -1,0 +1,723 @@
+import pandas as pd
+import argparse
+import sys
+from pathlib import Path
+
+# ================== CONFIGURATION ==================
+# Default file paths for internos and externos
+DEFAULT_INTERNOS_INPUT = 'ToDocument/Conociendo+el+talento+de+los+coaches_29+de+agosto+de+2025_13.58.xlsx'
+DEFAULT_EXTERNOS_INPUT = 'ToDocument/Conociendo+el+talento+de+los+coaches+externos_31+de+agosto+de+2025_19.07.xlsx'
+DEFAULT_OUTPUT_FILE = "ToDocument/outputfile.xlsx"
+
+# ================== STATIC MAPPINGS (DO NOT CHANGE) ==================
+# Basic elements mapping for INTERNOS
+BASIC_ELEMENTS_INTERNOS = {
+    "Nombre(s):":"Nombre(s)",
+    "Apellido Paterno:": 'Apellido Paterno:',
+    'Apellido Materno:':'Apellido Materno',
+    'Fecha de nacimiento (dd/mm/yyyy)':'Fecha nacimiento',
+    "Email\n(Asegurate que el formato de correo sea correcto con @ y un dominio válido, no agregues espacios antes o después del texto)":'Email',
+    'País de Residencia:':'País',
+    'Estado de Residencia:':'Estado',
+    'Celular (+lada) [número telefónico]\n:':'Celular',
+    'Género: - Selected Choice':'Género',
+    'Respecto al coaching:':'Respecto al coaching',
+    '¿Cuántas horas de práctica tienes en coaching? Por favor asegúrate de que marcas las horas reales en las sesiones de coaching (grupal, individual, de equipos),  excluyendo consultoría, mentoría y/o otras prácticas.\n\nFavor de no utilizar comas ni texto, solo incluye las horas estimadas\n(Correcto: 1500 | 30 | 2000 ; Formato incorrecto 1,500 | 30 horas | + de 1000 )':'Horas de práctica',
+    '¿Cuántos años de experiencia ACTIVA tienes como coach?\n\nFavor de no utilizar comas ni texto, solo incluye los años estimados\n(Correcto: 1500 | 30 | 2000 ; Formato incorrecto 1,500 | 30 horas | + de 1000 )':'Años de experiencia',
+    '¿Cuándo fue la última vez que atendiste un cliente con una sesión de coaching?':'Última vez que atendió cliente',
+    '¿Recibes supervisión en tu práctica como coach?':'Recibe supervisión en práctica como coach',
+    '¿Has recibido coaching? es decir, ¿has sido coachee?':'Ha sido coachee',
+    '¿Cuentas con alguna certificación de coaching?':'Cuenta con certificación',
+    '¿Cuándo fue la última vez que recibiste capacitación en temas de coaching?':'Última capacitación en coaching',
+    '¿Con cuántas horas de formación en coaching cuentas?\n\nFavor de no utilizar comas ni texto, solo incluye las horas estimadas\n\n(Correcto: 1500 | 30 | 2000 ; Formato incorrecto 1,500 | 30 horas | + de 1000)':'Horas de formación',
+    'Selecciona el tipo de certificación con la que cuentas (puedes incluir más de uno) - Selected Choice - Innermetrix':'Innermetrix',
+    'Selecciona el tipo de certificación con la que cuentas (puedes incluir más de uno) - Selected Choice - Leadership Circle Profile (LCP)':'LCP',
+    'Selecciona el tipo de certificación con la que cuentas (puedes incluir más de uno) - Selected Choice - PDA':'PDA',
+    'Selecciona el tipo de certificación con la que cuentas (puedes incluir más de uno) - Selected Choice - Eneagrama':'Eneagrama',
+    'Tipo de contratación que cuentas en el Tec - Selected Choice':"Tipo de contratación",
+    "Menciona las empresas en las que has impartido servicios de coaching":"Empresas que impartió coaching",
+    "¿Consideras que puedes brindar coaching en inglés?":"¿Puedes brindar coaching en inglés?"
+}
+
+# Basic elements mapping for EXTERNOS
+BASIC_ELEMENTS_EXTERNOS = {
+    "Nombre(s):":"Nombre(s)",
+    "Apellido Paterno:": 'Apellido Paterno:',
+    'Apellido Materno:':'Apellido Materno',
+    'Fecha de nacimiento (dd/mm/yyyy)':'Fecha nacimiento',
+    'Email':'Email',
+    'País de Residencia:':'País',
+    'Estado de Residencia:':'Estado',
+    'Celular (+lada) [número telefónico]\n:':'Celular',
+    'Género: - Selected Choice':'Género',
+    'Respecto al coaching:':'Respecto al coaching',
+    '¿Cuántas horas de práctica tienes en coaching? Por favor asegúrate de que marcas las horas reales en las sesiones de coaching (grupal, individual, de equipos),  excluyendo consultoría, mentoría y/o otras prácticas.\n\nFavor de no utilizar comas ni texto, solo incluye las horas estimadas\n(Correcto: 1500 | 30 | 2000 ; Formato incorrecto 1,500 | 30 horas | + de 1000 )':'Horas de práctica',
+    '¿Cuántos años de experiencia ACTIVA tienes como coach?\n\nFavor de no utilizar comas ni texto, solo incluye las horas estimadas\n(Correcto: 1500 | 30 | 2000 ; Formato incorrecto 1,500 | 30 horas | + de 1000 )':'Años de experiencia',
+    '¿Cuándo fue la última vez que tuviste una sesión de coaching?':'Última vez que atendió cliente',
+    '¿Recibes supervisión en tu práctica como coach?':'Recibe supervisión en práctica como coach',
+    '¿Has recibido coaching? es decir, ¿has sido coachee?':'Ha sido coachee',
+    '¿Cuentas con alguna certificación de coaching?':'Cuenta con certificación',
+    '¿Cuándo fue la última vez que recibiste capacitación en temas de coaching?':'Última capacitación en coaching',
+    '¿Con cuántas horas de formación en coaching cuentas?\n\nFavor de no utilizar comas ni texto, solo incluye las horas estimadas\n(Correcto: 1500 | 30 | 2000 ; Formato incorrecto 1,500 | 30 horas | + de 1000)':'Horas de formación',
+    'Selecciona el tipo de certificación con la que cuentas (puedes incluir más de uno) - Selected Choice - Innermetrix':'Innermetrix',
+    'Selecciona el tipo de certificación con la que cuentas (puedes incluir más de uno) - Selected Choice - Leadership Circle Profile (LCP)':'LCP',
+    'Selecciona el tipo de certificación con la que cuentas (puedes incluir más de uno) - Selected Choice - PDA':'PDA',
+    'Selecciona el tipo de certificación con la que cuentas (puedes incluir más de uno) - Selected Choice - Eneagrama':'Eneagrama',
+    'CURP: (en caso de ser extranjero, incluye tu número de identidad nacional)':"CURP / DNI",
+    "¿Te encuentras trabajando en proyectos de coaching en el TEC?":"¿Te encuentras trabajando en proyectos de coaching en el TEC?",
+    'Compártenos los proyectos en los que estás trabajando o en los que estás activo actualmente en el TEC.':'Compártenos los proyectos en los que estás trabajando o en los que estás activo actualmente en el TEC.'
+}
+
+# Category mappings for INTERNOS
+CATEGORY_MAPPINGS_INTERNOS = {
+    'tipo_coaching': {
+        'columns': {
+            'Marca los tipos de coaching en los que te sientes con amplia experiencia - Selected Choice - Coaching personal ':"Coaching personal",
+            'Marca los tipos de coaching en los que te sientes con amplia experiencia - Selected Choice - Coaching de equipos ': 'Coaching equipos',
+            'Marca los tipos de coaching en los que te sientes con amplia experiencia - Selected Choice - Coaching grupal ':'Coaching grupal',
+            'Marca los tipos de coaching en los que te sientes con amplia experiencia - Selected Choice - Coaching de bienestar ':'Coaching bienestar',
+            'Marca los tipos de coaching en los que te sientes con amplia experiencia - Selected Choice - Coaching ejecutivo':"Coaching Ejecutivo",
+        },
+        'expected_values': {
+            'Coaching personal': 'Coaching personal ',
+            'Coaching equipos': 'Coaching de equipos ',
+            'Coaching grupal': 'Coaching grupal ',
+            'Coaching bienestar': 'Coaching de bienestar ',
+            'Coaching Ejecutivo': 'Coaching ejecutivo'
+        },
+        'final_column': 'Tipo de coaching'
+    },
+    'tipo_clientes': {
+        'columns': {
+            'Selecciona tipo de clientes que has brindado coaching: - Selected Choice - Personal (coaching de vida, de bienestar, etc)' :'Personal',
+            'Selecciona tipo de clientes que has brindado coaching: - Selected Choice - Organizacional (contexto de empresas, ONG, Universidades)':'Organizaciones'
+        },
+        'expected_values': {
+            'Personal': 'Personal (coaching de vida, de bienestar, etc)',
+            'Organizaciones': 'Organizacional (contexto de empresas, ONG, Universidades)'
+        },
+        'final_column': 'Tipo de cliente que ha atendido'
+    },
+    'perfiles_clientes': {
+        'columns': {
+            '¿Con cuál o cuáles perfiles de coachees tienes experiencia atendiendo? - Selected Choice - Propietarios de Negocios y Emprendedores ':"Propietarios de Negocios y Emprendedores",
+            '¿Con cuál o cuáles perfiles de coachees tienes experiencia atendiendo? - Selected Choice - Ejecutivos de Alto Nivel (C-Suite): CEO/CIO/CFO ':'Ejecutivos alto nivel C-Suite:CEO/CFO/CTO',
+            '¿Con cuál o cuáles perfiles de coachees tienes experiencia atendiendo? - Selected Choice - Vicepresidentes: VSP/EVP':'Vicepresidentes(VSP/EVP)',
+            '¿Con cuál o cuáles perfiles de coachees tienes experiencia atendiendo? - Selected Choice - Gerentes de Departamento/Directores  ':'Gerentes de departamento / Directores',
+            '¿Con cuál o cuáles perfiles de coachees tienes experiencia atendiendo? - Selected Choice - Empleados de Alto Potencial ':'Empleados de Alto potencial',
+            '¿Con cuál o cuáles perfiles de coachees tienes experiencia atendiendo? - Selected Choice - Nuevos Empleados ': 'Nuevos empleados',
+            '¿Con cuál o cuáles perfiles de coachees tienes experiencia atendiendo? - Selected Choice - Equipos y Grupos ':'Equipos y Grupos',
+            '¿Con cuál o cuáles perfiles de coachees tienes experiencia atendiendo? - Selected Choice - Nuevos Líderes ': 'Nuevos líderes'
+        },
+        'expected_values': {
+            'Propietarios de Negocios y Emprendedores': 'Propietarios de Negocios y Emprendedores ',
+            'Ejecutivos alto nivel C-Suite:CEO/CFO/CTO': 'Ejecutivos de Alto Nivel (C-Suite): CEO/CIO/CFO ',
+            'Vicepresidentes(VSP/EVP)': 'Vicepresidentes: VSP/EVP',
+            'Gerentes de departamento / Directores': 'Gerentes de Departamento/Directores  ',
+            'Empleados de Alto potencial': 'Empleados de Alto Potencial ',
+            'Equipos y Grupos': 'Equipos y Grupos ',
+            'Nuevos empleados': 'Nuevos Empleados ',
+            'Nuevos líderes': 'Nuevos Líderes '
+        },
+        'final_column': 'Perfil de clientes'
+    },
+    'tipo_industria': {
+        'columns': {
+            'Selecciona la(s) industria(s) que con la(s) que tienes experiencia atendiendo clientes: - Selected Choice - Comunicaciones, Entretenimiento y Medios ':"Comunicaciones, Entretenimiento y Medios",
+            'Selecciona la(s) industria(s) que con la(s) que tienes experiencia atendiendo clientes: - Selected Choice - Educación ': 'Educación',
+            'Selecciona la(s) industria(s) que con la(s) que tienes experiencia atendiendo clientes: - Selected Choice - Energía y Servicios Públicos ':'Energía y Servicios Públicos',
+            'Selecciona la(s) industria(s) que con la(s) que tienes experiencia atendiendo clientes: - Selected Choice - Gobierno y Sector Público ':'Gobierno y Sector Público',
+            'Selecciona la(s) industria(s) que con la(s) que tienes experiencia atendiendo clientes: - Selected Choice - Salud, Farmacéutica y Ciencia ':'Salud, Farmacéutica y Ciencia',
+            'Selecciona la(s) industria(s) que con la(s) que tienes experiencia atendiendo clientes: - Selected Choice - Hospitalidad y Ocio ':'Hospitalidad y Ocio',
+            'Selecciona la(s) industria(s) que con la(s) que tienes experiencia atendiendo clientes: - Selected Choice - Manufactura, Ingeniería y Construcción ':'Manufactura, Ingeniería y Construcción',
+            'Selecciona la(s) industria(s) que con la(s) que tienes experiencia atendiendo clientes: - Selected Choice - Servicios Profesionales y Financieros ':'Servicios Profesionales y Financieros',
+            'Selecciona la(s) industria(s) que con la(s) que tienes experiencia atendiendo clientes: - Selected Choice - Retail y Consumo ':'Retail y Consumo',
+            'Selecciona la(s) industria(s) que con la(s) que tienes experiencia atendiendo clientes: - Selected Choice - Tecnología ':'Tecnología',
+            'Selecciona la(s) industria(s) que con la(s) que tienes experiencia atendiendo clientes: - Selected Choice - Transporte ':"Transporte"
+        },
+        'expected_values': {
+            'Comunicaciones, Entretenimiento y Medios': 'Comunicaciones, Entretenimiento y Medios ',
+            'Educación': 'Educación ',
+            'Energía y Servicios Públicos': 'Energía y Servicios Públicos ',
+            'Gobierno y Sector Público': 'Gobierno y Sector Público ',
+            'Salud, Farmacéutica y Ciencia': 'Salud, Farmacéutica y Ciencia ',
+            'Hospitalidad y Ocio': 'Hospitalidad y Ocio ',
+            'Manufactura, Ingeniería y Construcción': 'Manufactura, Ingeniería y Construcción ',
+            'Servicios Profesionales y Financieros': 'Servicios Profesionales y Financieros ',
+            'Retail y Consumo': 'Retail y Consumo ',
+            'Tecnología': 'Tecnología ',
+            'Transporte': 'Transporte '
+        },
+        'final_column': 'Tipo industrias cliente'
+    }
+}
+
+# Category mappings for EXTERNOS (different perfiles_clientes)
+CATEGORY_MAPPINGS_EXTERNOS = {
+    'tipo_coaching': CATEGORY_MAPPINGS_INTERNOS['tipo_coaching'],  # Same as internos
+    'tipo_clientes': CATEGORY_MAPPINGS_INTERNOS['tipo_clientes'],   # Same as internos
+    'perfiles_clientes': {
+        'columns': {
+            '¿Con cuál o cuáles perfiles de coachees tienes experiencia atendiendo? - Selected Choice - Propietarios de Negocios y Emprendedores ':"Propietarios de Negocios y Emprendedores",
+            '¿Con cuál o cuáles perfiles de coachees tienes experiencia atendiendo? - Selected Choice - Ejecutivos de Alto Nivel (C-Suite): CEO/CIO/CFO ':'Ejecutivos alto nivel C-Suite:CEO/CFO/CTO',
+            '¿Con cuál o cuáles perfiles de coachees tienes experiencia atendiendo? - Selected Choice - Vicepresidentes: VSP/EVP':'Vicepresidentes(VSP/EVP)',
+            '¿Con cuál o cuáles perfiles de coachees tienes experiencia atendiendo? - Selected Choice - Gerentes de Departamento/Directores  ':'Gerentes de departamento / Directores',
+            '¿Con cuál o cuáles perfiles de coachees tienes experiencia atendiendo? - Selected Choice - Empleados de Alto Potencial ':'Empleados de Alto potencial',
+            '¿Con cuál o cuáles perfiles de coachees tienes experiencia atendiendo? - Selected Choice - Nuevos Empleados ': 'Nuevos empleados',
+            '¿Con cuál o cuáles perfiles de coachees tienes experiencia atendiendo? - Selected Choice - Equipos y Grupos ':'Equipos y Grupos',
+            '¿Con cuál o cuáles perfiles de coachees tienes experiencia atendiendo? - Selected Choice - Nuevos Líderes ': 'Nuevos líderes'
+        },
+        'expected_values': {
+            'Propietarios de Negocios y Emprendedores': 'Propietarios de Negocios y Emprendedores ',
+            'Ejecutivos alto nivel C-Suite:CEO/CFO/CTO': 'Ejecutivos de Alto Nivel (C-Suite): CEO/CIO/CFO ',
+            'Vicepresidentes(VSP/EVP)': 'Vicepresidentes: VSP/EVP',
+            'Gerentes de departamento / Directores': ['Directores de Departamento', 'Gerencia Media'],  # Special case for externos
+            'Empleados de Alto potencial': 'Empleados de Alto Potencial',
+            'Equipos y Grupos': 'Equipos y grupos',
+            'Nuevos empleados': 'Nuevos Empleados',
+            'Nuevos líderes': 'Nuevos Líderes'
+        },
+        'final_column': 'Perfil de clientes',
+        'special_processing': 'externos_perfiles'  # Flag for special processing
+    },
+    'tipo_industria': CATEGORY_MAPPINGS_INTERNOS['tipo_industria']  # Same as internos
+}
+
+# Certification mappings (same for both)
+CERTIFICATION_MAPPINGS = {
+    'ICF': {
+        'columns': {
+            'Si tienes o has tenido credencial de ICF selecciona la que coincida (puedes seleccionar más de una opción) - Selected Choice - ICF Associate Certified Coach (ACC)  ':'ACC',
+            'Si tienes o has tenido credencial de ICF selecciona la que coincida (puedes seleccionar más de una opción) - Selected Choice - ICF Professional Certified Coach (PCC)  ':'PCC',
+            'Si tienes o has tenido credencial de ICF selecciona la que coincida (puedes seleccionar más de una opción) - Selected Choice - ICF Master Certified Coach (MCC) ':'MCC',
+        },
+        'expected_values': {
+            'ACC': 'ICF Associate Certified Coach (ACC)  ',
+            'PCC': 'ICF Professional Certified Coach (PCC)  ',
+            'MCC': 'ICF Master Certified Coach (MCC) '
+        },
+        'final_column': 'Certificación ICF'
+    },
+    'EMCC': {
+        'columns': {
+            'Si tienes o has tenido credencial de EMCC selecciona la que coincida (puedes seleccionar más de una opción) - Selected Choice - EMCC Foundation  ':'Foundation',
+            'Si tienes o has tenido credencial de EMCC selecciona la que coincida (puedes seleccionar más de una opción) - Selected Choice - EMCC Practitioner ':'Practitioner',
+            'Si tienes o has tenido credencial de EMCC selecciona la que coincida (puedes seleccionar más de una opción) - Selected Choice - EMCC Senior Practitioner  ':'Senior Practitioner',
+            'Si tienes o has tenido credencial de EMCC selecciona la que coincida (puedes seleccionar más de una opción) - Selected Choice - EMCC Master Practitioner  ':'Master Practitioner'
+        },
+        'expected_values': {
+            'Foundation': 'EMCC Foundation  ',
+            'Practitioner': 'EMCC Practitioner ',
+            'Senior Practitioner': 'EMCC Senior Practitioner  ',
+            'Master Practitioner': 'EMCC Master Practitioner  '
+        },
+        'final_column': 'Certificación EMCC'
+    },
+    'ICC': {
+        'columns': {
+            'Si tienes o has tenido credencial de ICC selecciona la que coincida (puedes seleccionar más de una opción) - Selected Choice - ICC Certificación Internacional Coaching (CIC)  ':'ICC Certificación Internacional Coaching (CIC)',
+            'Si tienes o has tenido credencial de ICC selecciona la que coincida (puedes seleccionar más de una opción) - Selected Choice - ICC Coaching Equipos (CCEQ)  ':'ICC Coaching Equipos (CCEQ)',
+            'Si tienes o has tenido credencial de ICC selecciona la que coincida (puedes seleccionar más de una opción) - Selected Choice - ICC Coaching Negocios (CCN)  ':'ICC Coaching Negocios (CCN)',
+            'Si tienes o has tenido credencial de ICC selecciona la que coincida (puedes seleccionar más de una opción) - Selected Choice - ICC Coaching Ejecutivo (CCEJ)  ':'ICC Coaching Ejecutivo (CCEJ)',
+            'Si tienes o has tenido credencial de ICC selecciona la que coincida (puedes seleccionar más de una opción) - Selected Choice - ICC Coaching Vida (VIDA)   ':'ICC Coaching Vida (VIDA)',
+        },
+        'expected_values': {
+            'ICC Certificación Internacional Coaching (CIC)': 'ICC Certificación Internacional Coaching (CIC)  ',
+            'ICC Coaching Equipos (CCEQ)': 'ICC Coaching Equipos (CCEQ)  ',
+            'ICC Coaching Negocios (CCN)': 'ICC Coaching Negocios (CCN)  ',
+            'ICC Coaching Ejecutivo (CCEJ)': 'ICC Coaching Ejecutivo (CCEJ)  ',
+            'ICC Coaching Vida (VIDA)': 'ICC Coaching Vida (VIDA)   '
+        },
+        'final_column': 'Certificación ICC'
+    },
+    'WABC': {
+        'columns': {
+            'Si tienes o has tenido credencial de WABC selecciona la que coincida - Selected Choice - WABC Registered Corporate Coach (RCC)  ':'WABC Registered Corporate Coach (RCC)',
+            'Si tienes o has tenido credencial de WABC selecciona la que coincida - Selected Choice - WABC Certified Business Coach (CBC)  ':'WABC Certified Business Coach (CBC)',
+            'Si tienes o has tenido credencial de WABC selecciona la que coincida - Selected Choice - WABC Certified Master Business Coach (CMBC)  ':'WABC Certified Master Business Coach (CMBC)',
+            'Si tienes o has tenido credencial de WABC selecciona la que coincida - Selected Choice - WABC Chartered Business Coach (ChBC)  ':'WABC Chartered Business Coach (ChBC)',
+        },
+        'expected_values': {
+            'WABC Registered Corporate Coach (RCC)': 'WABC Registered Corporate Coach (RCC)  ',
+            'WABC Certified Business Coach (CBC)': 'WABC Certified Business Coach (CBC)  ',
+            'WABC Certified Master Business Coach (CMBC)': 'WABC Certified Master Business Coach (CMBC)  ',
+            'WABC Chartered Business Coach (ChBC)': 'WABC Chartered Business Coach (ChBC)  '
+        },
+        'final_column': 'Certificación WABC'
+    }
+}
+
+# ================== HELPER FUNCTIONS ==================
+def filter_country(element):
+    """Standardize country names"""
+    mexico_variants = ['México','MEXICO', 'México ', 'Méxcio', 'MÉXICO','México y USA','M','CDMX',
+                      'MEXICO / ESPAÑA','Mexico ','Mexico']
+    usa_variants = ['Estados unidos ','USA']
+    colombia_variants = ['Colombia', 'COLOMBIA']
+    ecuador_variants = ['Ecuador y Colombia', 'Ecuador']
+    costa_rica_variants = ['Costa Rica', 'Costa Rica ']
+    
+    if element in mexico_variants:
+        return 'México'
+    elif element in usa_variants:
+        return 'Estados Unidos'
+    elif element in colombia_variants:
+        return 'Colombia'
+    elif element in ecuador_variants:
+        return 'Ecuador'
+    elif element in costa_rica_variants:
+        return 'Costa Rica'
+    elif pd.isna(element):
+        return 'N/A'
+    return element
+
+def homologate_states(state):
+    """Standardize Mexican state names"""
+    if pd.isna(state):
+        return 'No Especificado'
+    
+    state = str(state).strip().title()
+    
+    state_mapping = {
+        # Ciudad de México
+        'Cdmx': 'Ciudad de México', 'Cdmx ': 'Ciudad de México', 'Cdmx/Bcs': 'Ciudad de México',
+        'Cdmx / Queretaro': 'Ciudad de México', 'Ciudad De México': 'Ciudad de México',
+        'Ciudad De Mexico': 'Ciudad de México', 'Ciudad De Mexico ': 'Ciudad de México',
+        'Df': 'Ciudad de México', "Permanente":'Ciudad de México', 'Cdmx / Querétaro': 'Ciudad de México',
+        
+        # Estado de México
+        'Estado De México': 'Estado de México', 'Estado De Mexico': 'Estado de México',
+        'Edomex': 'Estado de México', 'Edo. Méxic': 'Estado de México',
+        'Eso. De Mexico ': 'Estado de México', 'Estado De México ': 'Estado de México',
+        'Estado De Mexico ': 'Estado de México', 'Estado De México - Toluca Y Cdmx': 'Estado de México',
+        'Estado De México (Área Metropolitana)': 'Estado de México', 'Área Metropolitana': 'N/A',
+        'Toluca ': 'Estado de México', 'Eso. De Mexico': 'Estado de México',
+        'Mexico': 'Estado de México', 'México':'Estado de México',
+        
+        # Nuevo León
+        'Nuevo Leon': 'Nuevo León', 'Nl': 'Nuevo León', 'Monterrey': 'Nuevo León',
+        'Nuevo León ': 'Nuevo León',
+        
+        # Querétaro
+        'Queretaro': 'Querétaro', 'Queretaro ': 'Querétaro',
+        
+        # Multi-location cases
+        'Estado De México Y Carolina Del Norte': 'Estado de México',
+        'Puebla Y Querétaro': 'Puebla', 'Morelos, Cuernavaca': 'Morelos',
+        'Morelos (Cuernavaca)': 'Morelos', 'Quintana Roo/Cdmx': 'Quintana Roo',
+        'Ciudad De México / Cataluña': 'Ciudad de México', 'Coahuila - Saltillo':'Coahuila',
+        
+        # Other states
+        'San Luis Potosí ': 'San Luis Potosí', 'Hidalgo ': 'Hidalgo',
+        'Jalisco ': 'Jalisco', 'Estado De México ': 'Estado de México',
+    }
+    
+    # Add uppercase variations
+    uppercase_mapping = {k.upper(): v for k, v in state_mapping.items()}
+    state_mapping.update(uppercase_mapping)
+    
+    return state_mapping.get(state, state)
+
+def transform_columns(df, id_column='Email', transform_columns=None, 
+                     column_type=bool, new_column_name='Tipo de Transformación'):
+    """Transform boolean columns into rows"""
+    # Ensure Email column exists
+    if id_column not in df.columns:
+        print(f"  Warning: ID column '{id_column}' not found in dataframe")
+        return pd.DataFrame(columns=[id_column, new_column_name])
+    
+    if transform_columns is None:
+        transform_columns = [col for col in df.columns 
+                           if df[col].dtype == column_type and col != id_column]
+    
+    transform_columns = [col for col in transform_columns if col != id_column and col in df.columns]
+    
+    if not transform_columns:
+        print(f"  Warning: No columns to transform")
+        return pd.DataFrame(columns=[id_column, new_column_name])
+    
+    # Melt DataFrame
+    transformed_df = df.melt(
+        id_vars=[id_column],
+        value_vars=transform_columns,
+        var_name='Columna Original',
+        value_name='Valor'
+    )
+    
+    # Filter True values
+    if column_type == bool:
+        transformed_df = transformed_df[transformed_df['Valor'] == True]
+    else:
+        transformed_df = transformed_df[transformed_df['Valor'].notna()]
+    
+    # Clean column names
+    transformed_df[new_column_name] = (transformed_df['Columna Original']
+                                       .str.replace('Coaching ', '')
+                                       .str.strip())
+    
+    return transformed_df[[id_column, new_column_name]]
+
+def process_category(fulltable, category_config, coach_type='internos'):
+    """Process a category of columns"""
+    # Check which columns exist
+    required_cols = list(category_config['columns'].keys())
+    available_cols = ['Email'] + [col for col in required_cols if col in fulltable.columns]
+    
+    if len(available_cols) == 1:  # Only Email column found
+        print(f"  Warning: No columns found for this category")
+        return pd.DataFrame({'Email': fulltable['Email'].unique()})
+    
+    # Extract and rename columns
+    df = fulltable[available_cols].rename(
+        columns={col: category_config['columns'][col] for col in available_cols if col != 'Email'}
+    ).reset_index(drop=True)
+    
+    # Special processing for externos perfiles_clientes
+    if category_config.get('special_processing') == 'externos_perfiles' and coach_type == 'externos':
+        # Handle the special case where we need to check for Directores and Gerencia Media
+        if 'Directores de Departamento' in df.columns and 'Gerencia Media' in df.columns:
+            df['Directores de Departamento'] = df['Directores de Departamento'] == 'Directores de Departamento'
+            df['Gerencia Media'] = df['Gerencia Media'] == 'Gerencia Media'
+            # Create combined column
+            df['Gerentes de departamento / Directores'] = ((df['Directores de Departamento'] == True) | 
+                                                           (df['Gerencia Media'] == True))
+            # Drop the original columns as they're now combined
+            df = df.drop(['Directores de Departamento', 'Gerencia Media'], axis=1)
+    
+    # Convert to boolean based on expected values
+    for col, expected_val in category_config['expected_values'].items():
+        if col in df.columns:
+            if isinstance(expected_val, list):
+                # Special case for multiple values (used in externos)
+                continue  # Already handled above
+            else:
+                df[col] = df[col] == expected_val
+    
+    return df
+
+def process_certification(fulltable, cert_config):
+    """Process certification columns"""
+    return process_category(fulltable, cert_config)
+
+# ================== MAIN PROCESSING ==================
+def process_coaches_data(input_file, output_file, coach_type='internos', verbose=False):
+    """
+    Main processing function for coaches data
+    
+    Args:
+        input_file (str): Path to input Excel file
+        output_file (str): Path to output Excel file
+        coach_type (str): Type of coaches ('internos' or 'externos')
+        verbose (bool): Print verbose output
+    
+    Returns:
+        tuple: (coaches_basic, all_dataframes, transformed_tables)
+    """
+    if verbose:
+        print(f"Loading {coach_type} data from: {input_file}")
+    
+    # Select appropriate mappings based on coach type
+    if coach_type == 'internos':
+        basic_elements = BASIC_ELEMENTS_INTERNOS
+        category_mappings = CATEGORY_MAPPINGS_INTERNOS
+        skip_rows = 1
+        filter_finished = True
+    else:  # externos
+        basic_elements = BASIC_ELEMENTS_EXTERNOS
+        category_mappings = CATEGORY_MAPPINGS_EXTERNOS
+        skip_rows = 1
+        filter_finished = False  # Externos doesn't have 'Finalizado' column
+    
+    # Load data
+    coaches_fulltable = pd.read_excel(input_file, skiprows=skip_rows)
+    
+    # Filter finished records only for internos
+    if filter_finished and 'Finalizado' in coaches_fulltable.columns:
+        coaches_fulltable = coaches_fulltable[coaches_fulltable['Finalizado'] == True]
+    
+    if verbose:
+        print(f"Loaded {len(coaches_fulltable)} records")
+    
+    # Rename email column for consistency (if needed for internos)
+    if coach_type == 'internos':
+        email_col = "Email\n(Asegurate que el formato de correo sea correcto con @ y un dominio válido, no agregues espacios antes o después del texto)"
+        if email_col in coaches_fulltable.columns:
+            coaches_fulltable.rename(columns={email_col: "Email"}, inplace=True)
+    
+    all_dataframes = {}
+    transformed_tables = []
+    
+    # Process basic information
+    if verbose:
+        print("Processing basic information...")
+    
+    # Check which columns actually exist
+    available_columns = []
+    missing_columns = []
+    for col in basic_elements.keys():
+        if col in coaches_fulltable.columns:
+            available_columns.append(col)
+        else:
+            missing_columns.append(col)
+    
+    if missing_columns:
+        if verbose:
+            print(f"  Warning: Missing columns: {missing_columns}")
+            print("  Attempting to find Email column...")
+        
+        # Try to find the Email column with a different format
+        email_columns = [col for col in coaches_fulltable.columns if 'Email' in col or 'email' in col]
+        if email_columns and len(missing_columns) == 1:
+            # Replace the missing email column with the found one
+            old_email_key = [k for k in basic_elements.keys() if 'Email' in k][0]
+            if old_email_key in missing_columns:
+                available_columns.append(email_columns[0])
+                if verbose:
+                    print(f"  Found Email column: {email_columns[0]}")
+    
+    if not available_columns:
+        raise ValueError("No valid columns found in the input file. Please check the file format.")
+    
+    coaches_basic = coaches_fulltable[available_columns].reset_index(drop=True)
+    
+    # Apply country and state filters
+    if 'País de Residencia:' in coaches_basic.columns:
+        coaches_basic['País de Residencia:'] = coaches_basic['País de Residencia:'].apply(filter_country)
+    if 'Estado de Residencia:' in coaches_basic.columns:
+        coaches_basic['Estado de Residencia:'] = coaches_basic['Estado de Residencia:'].apply(homologate_states)
+    
+    # Rename columns - only rename those that exist
+    rename_dict = {}
+    for old_col in coaches_basic.columns:
+        if old_col in basic_elements:
+            rename_dict[old_col] = basic_elements[old_col]
+        elif 'Email' in old_col or 'email' in old_col:
+            rename_dict[old_col] = 'Email'
+    
+    coaches_basic.rename(columns=rename_dict, inplace=True)
+    all_dataframes['Basic information'] = coaches_basic
+    
+    # Process categories
+    if verbose:
+        print("Processing coaching categories...")
+    for category_name, config in category_mappings.items():
+        df = process_category(coaches_fulltable, config, coach_type)
+        all_dataframes[f'{category_name.replace("_", " ")}'] = df
+        
+        # Get valid columns for transformation
+        valid_columns = [col for col in config['columns'].values() if col in df.columns]
+        
+        # For externos perfiles, include the combined column
+        if config.get('special_processing') == 'externos_perfiles' and coach_type == 'externos':
+            if 'Gerentes de departamento / Directores' in df.columns:
+                valid_columns.append('Gerentes de departamento / Directores')
+        
+        if valid_columns:
+            # Transform to long format
+            transformed_df = transform_columns(
+                df=df,
+                id_column='Email',
+                transform_columns=valid_columns,
+                new_column_name=config['final_column']
+            )
+            transformed_tables.append(transformed_df)
+            
+            if verbose:
+                print(f"  - Processed {category_name}: {len(transformed_df)} records")
+        else:
+            if verbose:
+                print(f"  - Skipped {category_name}: No valid columns found")
+    
+    # Process certifications
+    if verbose:
+        print("Processing certifications...")
+    for cert_type, config in CERTIFICATION_MAPPINGS.items():
+        df = process_certification(coaches_fulltable, config)
+        all_dataframes[f'{cert_type} certificacion'] = df
+        
+        # Get valid columns for transformation
+        valid_columns = [col for col in config['columns'].values() if col in df.columns]
+        
+        if valid_columns:
+            # Transform to long format
+            transformed_df = transform_columns(
+                df=df,
+                id_column='Email',
+                transform_columns=valid_columns,
+                new_column_name=config['final_column']
+            )
+            transformed_tables.append(transformed_df)
+            
+            if verbose:
+                print(f"  - Processed {cert_type}: {len(transformed_df)} records")
+        else:
+            if verbose:
+                print(f"  - Skipped {cert_type}: No valid columns found")
+    
+    # Save to Excel
+    if verbose:
+        print(f"\nSaving results to: {output_file}")
+    
+    with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
+        for sheet_name, df in all_dataframes.items():
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
+    
+    print(f"\n✓ Processing complete. Output saved to {output_file}")
+    print(f"✓ Total sheets created: {len(all_dataframes)}")
+    print(f"✓ Processed {len(transformed_tables)} transformed tables")
+    
+    return coaches_basic, all_dataframes, transformed_tables
+
+def setup_argparse():
+    """Setup command line argument parser"""
+    parser = argparse.ArgumentParser(
+        description='Process coaches data from Qualtrics survey export',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Process internos with default files
+  python %(prog)s --type internos
+  
+  # Process externos with default files
+  python %(prog)s --type externos
+  
+  # Specify custom input and output files
+  python %(prog)s --type internos -i survey_data.xlsx -o processed_data.xlsx
+  
+  # Run with verbose output
+  python %(prog)s --type externos -v
+  
+  # Check if files exist without processing
+  python %(prog)s --type internos --check-only
+        """
+    )
+    
+    parser.add_argument(
+        '--type',
+        type=str,
+        choices=['internos', 'externos'],
+        required=True,
+        help='Type of coaches to process (internos or externos)'
+    )
+    
+    parser.add_argument(
+        '-i', '--input',
+        type=str,
+        help='Input Excel file path (defaults based on type)'
+    )
+    
+    parser.add_argument(
+        '-o', '--output',
+        type=str,
+        default=DEFAULT_OUTPUT_FILE,
+        help=f'Output Excel file path (default: {DEFAULT_OUTPUT_FILE})'
+    )
+    
+    parser.add_argument(
+        '-v', '--verbose',
+        action='store_true',
+        help='Enable verbose output'
+    )
+    
+    parser.add_argument(
+        '--check-only',
+        action='store_true',
+        help='Only check if input file exists, do not process'
+    )
+    
+    parser.add_argument(
+        '--force',
+        action='store_true',
+        help='Overwrite output file if it exists'
+    )
+    
+    return parser
+
+def validate_files(input_file, output_file, force=False):
+    """
+    Validate input and output files
+    
+    Args:
+        input_file (str): Input file path
+        output_file (str): Output file path
+        force (bool): Force overwrite if output exists
+    
+    Returns:
+        bool: True if validation passes
+    """
+    # Check input file
+    input_path = Path(input_file)
+    if not input_path.exists():
+        print(f"❌ Error: Input file not found: {input_file}")
+        return False
+    
+    if not input_path.suffix.lower() in ['.xlsx', '.xls']:
+        print(f"❌ Error: Input file must be an Excel file (.xlsx or .xls)")
+        return False
+    
+    # Check output file
+    output_path = Path(output_file)
+    if output_path.exists() and not force:
+        response = input(f"⚠️  Output file already exists: {output_file}\n   Overwrite? (y/n): ")
+        if response.lower() != 'y':
+            print("Operation cancelled.")
+            return False
+    
+    # Ensure output directory exists
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    return True
+
+def main():
+    """Main entry point with argument parsing"""
+    parser = setup_argparse()
+    args = parser.parse_args()
+    
+    # Determine input file based on type if not specified
+    if args.input:
+        input_file = args.input
+    else:
+        input_file = DEFAULT_INTERNOS_INPUT if args.type == 'internos' else DEFAULT_EXTERNOS_INPUT
+    
+    # Check-only mode
+    if args.check_only:
+        input_path = Path(input_file)
+        output_path = Path(args.output)
+        
+        print(f"File Status Check ({args.type}):")
+        print(f"  Input file:  {input_file}")
+        print(f"    - Exists: {'✓' if input_path.exists() else '✗'}")
+        if input_path.exists():
+            print(f"    - Size: {input_path.stat().st_size / 1024:.1f} KB")
+        
+        print(f"  Output file: {args.output}")
+        print(f"    - Exists: {'✓' if output_path.exists() else '✗'}")
+        if output_path.exists():
+            print(f"    - Size: {output_path.stat().st_size / 1024:.1f} KB")
+        
+        return 0 if input_path.exists() else 1
+    
+    # Validate files
+    if not validate_files(input_file, args.output, args.force):
+        return 1
+    
+    try:
+        # Process the data
+        coaches_basic, all_dataframes, tables = process_coaches_data(
+            input_file, 
+            args.output,
+            args.type,
+            args.verbose
+        )
+        return 0
+        
+    except Exception as e:
+        print(f"❌ Error during processing: {str(e)}")
+        if args.verbose:
+            import traceback
+            traceback.print_exc()
+        return 1
+
+# ================== EXECUTION ==================
+if __name__ == "__main__":
+    sys.exit(main())
